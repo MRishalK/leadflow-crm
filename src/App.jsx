@@ -108,12 +108,12 @@ function Dashboard({ leads, employees, staffView, setActive, setModal }) {
   )
 }
 
-function LeadsPage({ leads, setModal, staffView, statusFilter, setStatusFilter, loanFilter, setLoanFilter, onStatusChange, onSchedule }) {
+function LeadsPage({ leads, setModal, staffView, statusFilter, setStatusFilter, loanFilter, setLoanFilter, onStatusChange, onSchedule, onViewDetails }) {
   const statuses = ['All Leads', 'New', 'Interested', 'Follow-up']
   return (
     <>
       <PageHead title={staffView ? 'My Leads' : 'Lead Management'} subtitle="Manage customer leads and assignments"
-        action={<>{!staffView && <button className="secondary" onClick={() => setModal('assign')}><Users size={16}/> Assign New</button>}<button className="primary" onClick={() => setModal('lead')}><Plus size={17}/> Add Lead</button></>}
+        action={<>{!staffView && <button className="secondary" onClick={() => setModal('assign')}><Users size={16}/> Assign Unassigned</button>}<button className="primary" onClick={() => setModal('lead')}><Plus size={17}/> Add Lead</button></>}
       />
       <div className="filter-bar">
         {statuses.map(status => <button key={status} className={`filter ${statusFilter === status ? 'active' : ''}`} onClick={() => setStatusFilter(status)}>{status}<b>{status === 'All Leads' ? leads.length : leads.filter(lead => lead.status === status).length}</b></button>)}
@@ -121,7 +121,7 @@ function LeadsPage({ leads, setModal, staffView, statusFilter, setStatusFilter, 
           <option value="All">All loan types</option>{[...new Set(leads.map(lead => lead.loan))].map(loan => <option key={loan}>{loan}</option>)}
         </select>
       </div>
-      <section className="panel"><LeadsTable leads={leads.filter(lead => (statusFilter === 'All Leads' || lead.status === statusFilter) && (loanFilter === 'All' || lead.loan === loanFilter))} onStatusChange={onStatusChange} onSchedule={onSchedule}/></section>
+      <section className="panel"><LeadsTable leads={leads.filter(lead => (statusFilter === 'All Leads' || lead.status === statusFilter) && (loanFilter === 'All' || lead.loan === loanFilter))} onStatusChange={onStatusChange} onSchedule={onSchedule} onViewDetails={onViewDetails}/></section>
     </>
   )
 }
@@ -132,20 +132,36 @@ function formatFollowUp(value) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-function LeadsTable({ leads, compact=false, onStatusChange, onSchedule }) {
+function LeadsTable({ leads, compact=false, onStatusChange, onSchedule, onViewDetails }) {
   return (
     <div className="table-wrap"><table>
-      <thead><tr><th>Customer</th><th>Loan Type</th><th>Amount</th><th>Status</th><th>{compact ? 'Assigned To' : 'Follow-up'}</th>{!compact && <th>Actions</th>}</tr></thead>
+      <thead><tr><th>Customer</th><th>Loan Type</th><th>Amount</th><th>Status</th><th>Assigned To</th>{!compact && <><th>Follow-up</th><th>Actions</th></>}</tr></thead>
       <tbody>{leads.map(l => (
         <tr key={l.id}>
           <td><div className="customer"><div className="avatar table-avatar">{l.name.split(' ').map(x=>x[0]).join('').slice(0,2)}</div><div><strong>{l.name}</strong><span>{l.phone}</span></div></div></td>
           <td><strong className="loan-type">{l.loan}</strong></td><td><strong>{l.amount}</strong></td><td><StatusPill status={l.status}/></td>
-          <td>{compact ? <span className="assignee">{l.assigned}</span> : <span className="follow-date">{formatFollowUp(l.follow)}</span>}</td>
-          {!compact && <td><div className="row-actions"><select className="row-status-select" aria-label={`Change ${l.name} status`} value={l.status} onChange={event => onStatusChange?.(l.id, event.target.value)}>{['New', 'Interested', 'Follow-up', 'Documents', 'Approved', 'Not Interested'].map(status => <option key={status}>{status}</option>)}</select><button className="icon-btn" type="button" aria-label={`Schedule follow-up for ${l.name}`} title="Schedule follow-up" onClick={() => onSchedule?.(l.id)}><CalendarClock size={17}/></button></div></td>}
+          <td><span className="assignee">{l.assigned}</span></td>
+          {!compact && <td><span className="follow-date">{formatFollowUp(l.follow)}</span></td>}
+          {!compact && <td><div className="row-actions"><select className="row-status-select" aria-label={`Change ${l.name} status`} value={l.status} onChange={event => onStatusChange?.(l.id, event.target.value)}>{['New', 'Interested', 'Follow-up', 'Documents', 'Approved', 'Not Interested'].map(status => <option key={status}>{status}</option>)}</select><button className="icon-btn" type="button" aria-label={`View details for ${l.name}`} title="View lead details" onClick={() => onViewDetails?.(l.id)}><Search size={16}/></button><button className="icon-btn" type="button" aria-label={`Schedule follow-up for ${l.name}`} title="Schedule follow-up" onClick={() => onSchedule?.(l.id)}><CalendarClock size={17}/></button></div></td>}
         </tr>
       ))}</tbody>
     </table></div>
   )
+}
+
+function LeadDetails({ lead }) {
+  return <div className="form-grid">
+    <label>Customer<strong>{lead.name}</strong></label>
+    <label>Phone<strong>{lead.phone}</strong></label>
+    <label>Loan type<strong>{lead.loan}</strong></label>
+    <label>Required amount<strong>{lead.amount}</strong></label>
+    <label>Status<strong>{lead.status}</strong></label>
+    <label>Assigned to<strong>{lead.assigned}</strong></label>
+    <label>Follow-up<strong>{formatFollowUp(lead.followUpAt ?? lead.follow)}</strong></label>
+    <label>Source<strong>{lead.source || 'Not specified'}</strong></label>
+    <label>Created<strong>{lead.createdAt ? new Date(lead.createdAt).toLocaleString() : 'Not available'}</strong></label>
+    <label className="full">Notes<textarea readOnly value={lead.notes?.trim() || 'No notes added.'}/></label>
+  </div>
 }
 
 function EmployeesPage({ employees, onAdd }) {
@@ -224,7 +240,7 @@ function ReportsPage({ leads, employees }) {
   )
 }
 
-function LeadForm({ onSubmit, onCancel }) {
+function LeadForm({ employees, allowAssignment, onSubmit, onCancel }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   async function submit(event) {
@@ -233,20 +249,25 @@ function LeadForm({ onSubmit, onCancel }) {
     setSaving(true)
     const form = new FormData(event.currentTarget)
     try {
-      await onSubmit({
+      const lead = {
         name: form.get('name'),
         phone: form.get('phone'),
         loan: form.get('loan'),
         amount: form.get('amount'),
         notes: form.get('notes'),
-      })
+      }
+      if (allowAssignment) {
+        const assignedEmployeeId = form.get('assignedEmployeeId')
+        lead.assignedEmployeeId = assignedEmployeeId ? Number(assignedEmployeeId) : null
+      }
+      await onSubmit(lead)
     } catch (submitError) {
       setError(submitError.message)
     } finally {
       setSaving(false)
     }
   }
-  return <form className="form-grid" onSubmit={submit}><label>Customer Name<input name="name" required maxLength="120" placeholder="Enter full name"/></label><label>Phone Number<input name="phone" required maxLength="40" placeholder="+91 00000 00000"/></label><label>Loan Type<select name="loan"><option>Personal Loan</option><option>Home Loan</option><option>Business Loan</option><option>Car Loan</option><option>Education Loan</option></select></label><label>Required Amount<input name="amount" required maxLength="40" placeholder="₹ 5,00,000"/></label><label className="full">Notes<textarea name="notes" maxLength="2000" placeholder="Add call notes or requirements"/></label>{error && <p className="form-error full" role="alert">{error}</p>}<div className="form-actions full"><button type="button" className="secondary" onClick={onCancel}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add Lead'}</button></div></form>
+  return <form className="form-grid" onSubmit={submit}><label>Customer Name<input name="name" required maxLength="120" placeholder="Enter full name"/></label><label>Phone Number<input name="phone" required maxLength="40" placeholder="+91 00000 00000"/></label><label>Loan Type<select name="loan"><option>Personal Loan</option><option>Home Loan</option><option>Business Loan</option><option>Car Loan</option><option>Education Loan</option></select></label><label>Required Amount<input name="amount" required maxLength="40" placeholder="₹ 5,00,000"/></label>{allowAssignment && <label className="full">Assign to staff<select name="assignedEmployeeId" defaultValue=""><option value="">Leave unassigned</option>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label>}<label className="full">Notes<textarea name="notes" maxLength="2000" placeholder="Add call notes or requirements"/></label>{error && <p className="form-error full" role="alert">{error}</p>}<div className="form-actions full"><button type="button" className="secondary" onClick={onCancel}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Add Lead'}</button></div></form>
 }
 
 function Assignment({ employees, onSubmit, onCancel }) {
@@ -265,7 +286,7 @@ function Assignment({ employees, onSubmit, onCancel }) {
       setSaving(false)
     }
   }
-  return <form className="form-grid" onSubmit={submit}><label className="full">Assign unassigned new leads to<select required value={employeeId} onChange={event => setEmployeeId(event.target.value)}><option value="">Select an employee</option>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label>{error && <p className="form-error full" role="alert">{error}</p>}<div className="form-actions full"><button type="button" className="secondary" onClick={onCancel}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Assigning…' : 'Assign New Leads'}</button></div></form>
+  return <form className="form-grid" onSubmit={submit}><label className="full">Assign all unassigned leads to<select required value={employeeId} onChange={event => setEmployeeId(event.target.value)}><option value="">Select an employee</option>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label>{error && <p className="form-error full" role="alert">{error}</p>}<div className="form-actions full"><button type="button" className="secondary" onClick={onCancel}>Cancel</button><button className="primary" type="submit" disabled={saving}>{saving ? 'Assigning…' : 'Assign Unassigned Leads'}</button></div></form>
 }
 
 function EmployeeForm({ onSubmit, onCancel }) {
@@ -474,8 +495,13 @@ async function migrateStoredLeads(currentLeads) {
       phone: lead.phone,
       loan: lead.loan,
       amount: lead.amount,
+      status: lead.status || 'New',
+      assignedEmployeeId: lead.assignedEmployeeId,
+      assigned: lead.assigned,
+      followUpAt: lead.followUpAt ?? lead.follow_up_at ?? lead.follow ?? null,
       source: lead.source || 'Migrated from local demo',
       notes: lead.notes || '',
+      createdAt: lead.createdAt ?? lead.created_at,
     }))
     await api('/api/leads/import', { method: 'POST', body: { leads: batch } })
     batch.forEach(lead => knownPhones.add(String(lead.phone)))
@@ -571,6 +597,38 @@ export default function App() {
   }, [loggedIn, role])
 
   useEffect(() => {
+    if (!loggedIn) return
+    let activeEffect = true
+    let refreshInProgress = false
+    let errorNotified = false
+    async function refreshTeamData() {
+      if (!activeEffect || document.visibilityState === 'hidden' || refreshInProgress) return
+      refreshInProgress = true
+      try {
+        const [leadData, employeeData] = await Promise.all([api('/api/leads'), api('/api/employees')])
+        if (!activeEffect) return
+        setLeads(leadData.leads)
+        setEmployees(employeeData.employees)
+        errorNotified = false
+      } catch (error) {
+        if (activeEffect && !errorNotified) notify(error.message)
+        errorNotified = true
+      } finally {
+        refreshInProgress = false
+      }
+    }
+    const timer = window.setInterval(refreshTeamData, 5000)
+    window.addEventListener('focus', refreshTeamData)
+    document.addEventListener('visibilitychange', refreshTeamData)
+    return () => {
+      activeEffect = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshTeamData)
+      document.removeEventListener('visibilitychange', refreshTeamData)
+    }
+  }, [loggedIn])
+
+  useEffect(() => {
     if (!toast) return
     const timer = setTimeout(() => setToast(''), 2600)
     return () => clearTimeout(timer)
@@ -615,13 +673,13 @@ export default function App() {
     }
   }
 
-  async function assignNewLeads(employeeId) {
+  async function assignUnassignedLeads(employeeId) {
     const result = await api('/api/leads/assign', { method: 'POST', body: { employeeId } })
     const [leadData, employeeData] = await Promise.all([api('/api/leads'), api('/api/employees')])
     setLeads(leadData.leads)
     setEmployees(employeeData.employees)
     setModal(null)
-    notify(`${result.assignedCount} new lead${result.assignedCount === 1 ? '' : 's'} assigned.`)
+    notify(`${result.assignedCount} unassigned lead${result.assignedCount === 1 ? '' : 's'} assigned.`)
   }
 
   async function scheduleFollowUp(leadId, followUpAt) {
@@ -756,7 +814,7 @@ export default function App() {
           {active === 'Dashboard' || active === 'My Dashboard' ? (
             <Dashboard leads={leads} employees={employees} staffView={staffView} setActive={setActive} setModal={setModal} />
           ) : active === 'Leads' || active === 'My Leads' ? (
-            <LeadsPage leads={visibleLeads} setModal={setModal} staffView={staffView} statusFilter={statusFilter} setStatusFilter={setStatusFilter} loanFilter={loanFilter} setLoanFilter={setLoanFilter} onStatusChange={changeLeadStatus} onSchedule={leadId => { setSelectedLeadId(leadId); setModal('followup') }}/>
+            <LeadsPage leads={visibleLeads} setModal={setModal} staffView={staffView} statusFilter={statusFilter} setStatusFilter={setStatusFilter} loanFilter={loanFilter} setLoanFilter={setLoanFilter} onStatusChange={changeLeadStatus} onSchedule={leadId => { setSelectedLeadId(leadId); setModal('followup') }} onViewDetails={leadId => { setSelectedLeadId(leadId); setModal('details') }}/>
           ) : active === 'Employees' ? (
             <EmployeesPage employees={employees} onAdd={() => setModal('employee')}/>
           ) : active === 'Follow-ups' ? (
@@ -776,15 +834,20 @@ export default function App() {
       </main>
 
       {modal === 'lead' && <Modal title="Add New Lead" onClose={() => setModal(null)}>
-        <LeadForm onCancel={() => setModal(null)} onSubmit={async lead => {
-          const { lead: createdLead } = await api('/api/leads', { method: 'POST', body: lead })
-          setLeads(current => [createdLead, ...current])
+        <LeadForm employees={employees} allowAssignment={!staffView} onCancel={() => setModal(null)} onSubmit={async lead => {
+          await api('/api/leads', { method: 'POST', body: lead })
+          const [leadData, employeeData] = await Promise.all([api('/api/leads'), api('/api/employees')])
+          setLeads(leadData.leads)
+          setEmployees(employeeData.employees)
           setModal(null)
           notify('Lead added successfully.')
         }}/>
       </Modal>}
-      {modal === 'assign' && <Modal title="Assign New Leads" onClose={() => setModal(null)}>
-        <Assignment employees={employees} onCancel={() => setModal(null)} onSubmit={assignNewLeads}/>
+      {modal === 'assign' && <Modal title="Assign Unassigned Leads" onClose={() => setModal(null)}>
+        <Assignment employees={employees} onCancel={() => setModal(null)} onSubmit={assignUnassignedLeads}/>
+      </Modal>}
+      {modal === 'details' && selectedLeadId && <Modal title="Lead Details" onClose={() => { setModal(null); setSelectedLeadId(null) }}>
+        <LeadDetails lead={leads.find(lead => lead.id === selectedLeadId)}/>
       </Modal>}
       {modal === 'followup' && selectedLeadId && <Modal title="Schedule Follow-up" onClose={() => { setModal(null); setSelectedLeadId(null) }}>
         <FollowUpForm lead={leads.find(lead => lead.id === selectedLeadId)} onCancel={() => { setModal(null); setSelectedLeadId(null) }} onSubmit={followUpAt => scheduleFollowUp(selectedLeadId, followUpAt)}/>

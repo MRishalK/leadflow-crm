@@ -19,6 +19,12 @@ npm run build
 npm start
 ```
 
+## Deploy a free demo
+
+The `render.yaml` Blueprint configures a free Render web service. Connect this repository in the Render Dashboard and create a new Blueprint to deploy it. Render assigns the public URL; add `/mobile` to that URL for the mobile layout.
+
+Free Render services sleep when idle and use an ephemeral filesystem. Demo leads, accounts created after deployment, and uploaded documents can be lost when the service sleeps, restarts, or redeploys. Do not use this deployment for real customer data.
+
 ## Demo credentials
 
 - Admin: `admin@leadflow.com` / `password`

@@ -135,6 +135,77 @@ if (leadCount === 0) {
   }
 }
 
+const demoLeadSeed = [
+  ['Aditi Verma', 'DEMO-1001', 'Personal Loan', '₹7,50,000', 'New', 'Priya Sharma', `${tomorrowDate}T11:00:00+05:30`, 'Website', 'Demo customer: salaried applicant exploring a personal loan.'],
+  ['Kunal Desai', 'DEMO-1002', 'Home Loan', '₹42,00,000', 'Interested', 'Priya Sharma', null, 'Referral', 'Demo customer: requested details about home-loan eligibility.'],
+  ['Rhea Kapoor', 'DEMO-1003', 'Car Loan', '₹9,25,000', 'Follow-up', 'Arjun Mehta', `${tomorrowDate}T14:30:00+05:30`, 'Walk-in', 'Demo customer: compare repayment options on the next call.'],
+  ['Nikhil Joshi', 'DEMO-1004', 'Education Loan', '₹12,00,000', 'Documents', 'Arjun Mehta', null, 'Campaign', 'Demo customer: preparing documents for an education loan.'],
+  ['Tara Kulkarni', 'DEMO-1005', 'Business Loan', '₹18,00,000', 'New', 'Sneha Patel', `${tomorrowDate}T12:00:00+05:30`, 'Website', 'Demo customer: small business owner requesting financing details.'],
+  ['Manoj Nair', 'DEMO-1006', 'Home Loan', '₹56,00,000', 'Approved', 'Sneha Patel', null, 'Referral', 'Demo customer: home-loan application approved.'],
+  ['Isha Reddy', 'DEMO-1007', 'Personal Loan', '₹6,00,000', 'Interested', 'Rahul Verma', null, 'Walk-in', 'Demo customer: interested in a personal loan for planned expenses.'],
+  ['Dev Malhotra', 'DEMO-1008', 'Car Loan', '₹11,50,000', 'Follow-up', 'Rahul Verma', `${tomorrowDate}T15:00:00+05:30`, 'Website', 'Demo customer: follow up about vehicle and repayment details.'],
+]
+const demoFirstNames = ['Aarav', 'Ishita', 'Kabir', 'Mira', 'Rohan', 'Sana', 'Vivaan', 'Anika']
+const demoLastNamesByStaff = [
+  ['Menon', 'Bhatia', 'Chawla', 'Khanna', 'Sinha', 'Trivedi'],
+  ['Kapoor', 'Iyer', 'Desai', 'Kulkarni', 'Nair', 'Reddy'],
+  ['Rao', 'Verma', 'Shah', 'Gupta', 'Kaur', 'Mehta'],
+  ['Sharma', 'Banerjee', 'Vora', 'Rangan', 'Chopra', 'Parekh'],
+]
+const demoLoans = ['Personal Loan', 'Home Loan', 'Car Loan', 'Education Loan', 'Business Loan']
+const demoAmounts = ['₹4,50,000', '₹8,00,000', '₹15,00,000', '₹22,00,000', '₹38,00,000', '₹9,75,000']
+const demoStatuses = ['New', 'Interested', 'Follow-up', 'Documents', 'Approved', 'Not Interested']
+const demoSources = ['Website', 'Referral', 'Walk-in', 'Campaign']
+const demoNotes = [
+  'Demo customer: requested an eligibility check and repayment estimate.',
+  'Demo customer: prefers a callback to discuss available options.',
+  'Demo customer: comparing offers from multiple lenders.',
+  'Demo customer: application details are ready for review.',
+  'Demo customer: asked for a checklist of required documents.',
+]
+for (let staffIndex = 0; staffIndex < 4; staffIndex += 1) {
+  for (let customerIndex = 0; customerIndex < 48; customerIndex += 1) {
+    const sequence = staffIndex * 48 + customerIndex
+    const firstName = demoFirstNames[customerIndex % demoFirstNames.length]
+    const lastName = demoLastNamesByStaff[staffIndex][Math.floor(customerIndex / demoFirstNames.length)]
+    const status = demoStatuses[sequence % demoStatuses.length]
+    const followUpAt = status === 'Follow-up' ? `${tomorrowDate}T${10 + customerIndex % 6}:00:00+05:30` : null
+    demoLeadSeed.push([
+      `${firstName} ${lastName}`,
+      `DEMO-${String(sequence + 1009).padStart(4, '0')}`,
+      demoLoans[sequence % demoLoans.length],
+      demoAmounts[sequence % demoAmounts.length],
+      status,
+      employeeNames[staffIndex],
+      followUpAt,
+      demoSources[sequence % demoSources.length],
+      demoNotes[sequence % demoNotes.length],
+    ])
+  }
+}
+const insertDemoLead = database.prepare(`
+  INSERT INTO leads (name, phone, loan, amount, status, assigned_employee_id, follow_up_at, source, notes)
+  SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+  WHERE NOT EXISTS (SELECT 1 FROM leads WHERE phone = ?)
+`)
+for (const [name, phone, loan, amount, status, assigned, followUpAt, source, notes] of demoLeadSeed) {
+  const employeeId = employeeByName.get(assigned)
+  if (employeeId) insertDemoLead.run(name, phone, loan, amount, status, employeeId, followUpAt, source, notes, phone)
+}
+database.prepare(`
+  UPDATE leads
+  SET amount = '₹' || substr(amount, 2)
+  WHERE phone GLOB 'DEMO-*' AND substr(amount, 1, 1) = '?'
+`).run()
+const insertDemoCall = database.prepare(`
+  INSERT INTO calls (lead_id, employee_id, outcome, notes)
+  SELECT l.id, l.assigned_employee_id, 'Call completed', 'Demo call for graph demonstration.'
+  FROM leads l
+  WHERE l.phone = ?
+    AND NOT EXISTS (SELECT 1 FROM calls c WHERE c.lead_id = l.id)
+`)
+for (const [, phone] of demoLeadSeed) insertDemoCall.run(phone)
+
 const bankSeed = [
   ['HDFC Bank', 'Home, Personal, Car', 48, '#665af2'],
   ['ICICI Bank', 'Home, Education', 36, '#ee9a43'],
@@ -185,7 +256,10 @@ const leadSelect = `
 const leadList = database.prepare(`${leadSelect} ORDER BY l.id DESC`)
 const leadById = database.prepare(`${leadSelect} WHERE l.id = ?`)
 const employeeList = database.prepare(`
-  SELECT e.id, e.name, e.email, e.title, e.daily_target AS target, e.calls_completed AS calls,
+  SELECT e.id, e.name, e.email, e.title, e.daily_target AS target,
+    (SELECT COUNT(*) FROM calls c
+      WHERE c.employee_id = e.id
+        AND date(c.created_at, '+05:30') = date('now', '+05:30')) AS calls,
     e.status, (SELECT COUNT(*) FROM leads l WHERE l.assigned_employee_id = e.id) AS assigned_leads
   FROM employees e ORDER BY e.id
 `)
@@ -343,14 +417,26 @@ async function handleApi(request, response, url) {
     if (name.length > 120 || phone.length > 40 || loan.length > 80 || amount.length > 40) {
       throw new HttpError(400, 'One or more lead fields are too long.')
     }
+    if (user.role !== 'Admin' && body.assignedEmployeeId !== undefined) requireAdmin(user)
+    const assignedEmployeeId = user.role === 'Admin'
+      ? body.assignedEmployeeId === undefined || body.assignedEmployeeId === null
+        ? null
+        : Number(body.assignedEmployeeId)
+      : user.employeeId
+    if (assignedEmployeeId !== null && (!Number.isInteger(assignedEmployeeId) || !database.prepare('SELECT 1 FROM employees WHERE id = ?').get(assignedEmployeeId))) {
+      throw new HttpError(400, 'Select a valid employee.')
+    }
     const result = database.prepare(`
-      INSERT INTO leads (name, phone, loan, amount, status, source, notes)
-      VALUES (?, ?, ?, ?, 'New', ?, ?)
-    `).run(name, phone, loan, amount, String(body.source ?? 'Manual').slice(0, 80), String(body.notes ?? '').slice(0, 2000))
+      INSERT INTO leads (name, phone, loan, amount, status, assigned_employee_id, source, notes)
+      VALUES (?, ?, ?, ?, 'New', ?, ?, ?)
+    `).run(name, phone, loan, amount, assignedEmployeeId, String(body.source ?? 'Manual').slice(0, 80), String(body.notes ?? '').slice(0, 2000))
     const id = `LD-${String(result.lastInsertRowid).padStart(3, '0')}`
+    const assigned = assignedEmployeeId === null
+      ? null
+      : database.prepare('SELECT name FROM employees WHERE id = ?').get(assignedEmployeeId).name
     return sendJson(response, 201, { lead: {
-      id, name, phone, loan, amount, status: 'New', assigned: 'Unassigned',
-      assignedEmployeeId: null, follow: null, followUpAt: null, source: body.source ?? 'Manual',
+      id, name, phone, loan, amount, status: 'New', assigned: assigned ?? 'Unassigned',
+      assignedEmployeeId, follow: null, followUpAt: null, source: body.source ?? 'Manual',
     } })
   }
 
@@ -360,7 +446,11 @@ async function handleApi(request, response, url) {
     if (!Array.isArray(body.leads) || body.leads.length === 0 || body.leads.length > 500) {
       throw new HttpError(400, 'Upload a CSV with between 1 and 500 leads.')
     }
+    const allowedStatuses = ['New', 'Interested', 'Follow-up', 'Documents', 'Approved', 'Not Interested']
+    const employeeById = database.prepare('SELECT id FROM employees WHERE id = ?')
+    const employeeByName = database.prepare('SELECT id FROM employees WHERE lower(name) = lower(?) OR lower(email) = lower(?)')
     const normalized = body.leads.map((lead, index) => {
+      if (!lead || typeof lead !== 'object') throw new HttpError(400, `CSV row ${index + 2} is invalid.`)
       const name = String(lead.name ?? '').trim()
       const phone = String(lead.phone ?? '').trim()
       const loan = String(lead.loan ?? '').trim()
@@ -369,13 +459,47 @@ async function handleApi(request, response, url) {
       if (name.length > 120 || phone.length > 40 || loan.length > 80 || amount.length > 40) {
         throw new HttpError(400, `CSV row ${index + 2} has a field that is too long.`)
       }
-      return [name, phone, loan, amount, String(lead.source ?? 'CSV import').slice(0, 80), String(lead.notes ?? '').slice(0, 2000)]
+      const status = String(lead.status ?? 'New').trim() || 'New'
+      if (!allowedStatuses.includes(status)) throw new HttpError(400, `CSV row ${index + 2} has an invalid lead status.`)
+      let assignedEmployeeId = lead.assignedEmployeeId === undefined || lead.assignedEmployeeId === null || lead.assignedEmployeeId === ''
+        ? null
+        : Number(lead.assignedEmployeeId)
+      const assignedName = String(lead.assigned ?? '').trim()
+      if (assignedName && assignedName.toLowerCase() !== 'unassigned') {
+        const matchingEmployee = employeeByName.get(assignedName, assignedName)
+        if (matchingEmployee && (assignedEmployeeId === null || !employeeById.get(assignedEmployeeId))) {
+          assignedEmployeeId = matchingEmployee.id
+        }
+        if (assignedEmployeeId === null) throw new HttpError(400, `CSV row ${index + 2} references an unknown employee.`)
+      }
+      if (assignedEmployeeId !== null && (!Number.isInteger(assignedEmployeeId) || !employeeById.get(assignedEmployeeId))) {
+        throw new HttpError(400, `CSV row ${index + 2} has an invalid assigned employee.`)
+      }
+      const rawFollowUpAt = lead.followUpAt ?? lead.follow_up_at ?? lead.follow ?? null
+      const followUpAt = rawFollowUpAt && String(rawFollowUpAt).trim().toLowerCase() !== 'not scheduled'
+        ? String(rawFollowUpAt)
+        : null
+      if (followUpAt && !Number.isFinite(Date.parse(followUpAt))) {
+        throw new HttpError(400, `CSV row ${index + 2} has an invalid follow-up date.`)
+      }
+      const rawCreatedAt = lead.createdAt ?? lead.created_at ?? null
+      const createdAt = rawCreatedAt ? String(rawCreatedAt) : null
+      if (createdAt && !Number.isFinite(Date.parse(createdAt))) {
+        throw new HttpError(400, `CSV row ${index + 2} has an invalid creation date.`)
+      }
+      return [
+        name, phone, loan, amount, status, assignedEmployeeId,
+        followUpAt ? new Date(followUpAt).toISOString() : null,
+        String(lead.source ?? 'CSV import').slice(0, 80),
+        String(lead.notes ?? '').slice(0, 2000),
+        createdAt ? new Date(createdAt).toISOString() : null,
+      ]
     })
     database.exec('BEGIN IMMEDIATE')
     try {
       const insert = database.prepare(`
-        INSERT INTO leads (name, phone, loan, amount, status, source, notes)
-        VALUES (?, ?, ?, ?, 'New', ?, ?)
+        INSERT INTO leads (name, phone, loan, amount, status, assigned_employee_id, follow_up_at, source, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
       `)
       for (const record of normalized) insert.run(...record)
       database.exec('COMMIT')
@@ -395,7 +519,7 @@ async function handleApi(request, response, url) {
     }
     const result = database.prepare(`
       UPDATE leads SET assigned_employee_id = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE status = 'New' AND assigned_employee_id IS NULL
+      WHERE assigned_employee_id IS NULL
     `).run(employeeId)
     return sendJson(response, 200, { assignedCount: Number(result.changes) })
   }
@@ -775,6 +899,6 @@ const server = createServer((request, response) => {
 })
 
 const port = Number(process.env.PORT ?? 5173)
-server.listen(port, '127.0.0.1', () => {
-  console.log(`LeadFlow ${process.env.API_ONLY === '1' ? 'API' : 'app'} listening on http://127.0.0.1:${port}`)
+server.listen(port, '0.0.0.0', () => {
+  console.log(`LeadFlow ${process.env.API_ONLY === '1' ? 'API' : 'app'} listening on port ${port}`)
 })
