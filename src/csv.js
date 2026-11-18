@@ -1,13 +1,14 @@
 export function parseLeadCsv(text) {
+  const input = text.replace(/^\uFEFF/, '')
   const rows = []
   let row = []
   let field = ''
   let quoted = false
 
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index]
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index]
     if (quoted) {
-      if (character === '"' && text[index + 1] === '"') {
+      if (character === '"' && input[index + 1] === '"') {
         field += '"'
         index += 1
       } else if (character === '"') {

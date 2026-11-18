@@ -19,6 +19,8 @@ npm run build
 npm start
 ```
 
+Run the CSV parser tests with `npm test`.
+
 ## Deploy a free demo
 
 The `render.yaml` Blueprint configures a free Render web service. Connect this repository in the Render Dashboard and create a new Blueprint to deploy it. Render assigns the public URL; add `/mobile` to that URL for the mobile layout.

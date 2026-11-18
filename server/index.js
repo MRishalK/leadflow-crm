@@ -217,17 +217,20 @@ for (const bank of bankSeed) insertBank.run(...bank)
 
 if (database.prepare('SELECT COUNT(*) AS count FROM applications').get().count === 0) {
   const applicationSeed = [
-    [1, 'HDFC Bank', 'Home Loan', '₹35,00,000', 'Under Review'],
-    [6, 'ICICI Bank', 'Education Loan', '₹15,00,000', 'Approved'],
-    [3, 'Axis Bank', 'Business Loan', '₹12,00,000', 'Documents'],
+    ['+91 98765 43210', 'Rajesh Kumar', 'HDFC Bank', 'Home Loan', '₹35,00,000', 'Under Review'],
+    ['+91 98112 33445', 'Sunita Rao', 'ICICI Bank', 'Education Loan', '₹15,00,000', 'Approved'],
+    ['+91 99887 66554', 'Vikram Singh', 'Axis Bank', 'Business Loan', '₹12,00,000', 'Documents'],
   ]
+  const leadBySeedIdentity = database.prepare('SELECT id FROM leads WHERE phone = ? AND name = ?')
+  const bankByName = database.prepare('SELECT id FROM banks WHERE name = ?')
   const insertApplication = database.prepare(`
     INSERT INTO applications (reference, lead_id, bank_id, scheme, amount, status)
     VALUES (?, ?, ?, ?, ?, ?)
   `)
-  for (const [leadId, bankName, scheme, amount, status] of applicationSeed) {
-    const bankId = database.prepare('SELECT id FROM banks WHERE name = ?').get(bankName)?.id
-    if (bankId && database.prepare('SELECT 1 FROM leads WHERE id = ?').get(leadId)) {
+  for (const [phone, name, bankName, scheme, amount, status] of applicationSeed) {
+    const leadId = leadBySeedIdentity.get(phone, name)?.id
+    const bankId = bankByName.get(bankName)?.id
+    if (leadId && bankId) {
       insertApplication.run(`APP-${String(leadId).padStart(4, '0')}`, leadId, bankId, scheme, amount, status)
     }
   }

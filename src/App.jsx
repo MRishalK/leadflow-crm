@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api.js'
 import { parseLeadCsv } from './csv.js'
 import {
-  LayoutDashboard, Users, UserRoundCheck, CalendarClock, FileCheck2, Building2,
+  LayoutDashboard, Users, UserRoundCheck, CalendarClock, FileCheck2,
   Landmark, ChartNoAxesCombined, LogOut, Search, Bell, ChevronDown, Plus,
-  Upload, MoreHorizontal, Phone, CheckCircle2, Clock3, ArrowUpRight, X,
+  Upload, MoreHorizontal, Phone, CheckCircle2, ArrowUpRight, X,
   Menu, PhoneCall, ClipboardCheck, Settings, Download, CircleDollarSign,
 } from 'lucide-react'
 
@@ -62,7 +62,7 @@ function PageHead({ title, subtitle, action, secondary }) {
   )
 }
 
-function Dashboard({ leads, employees, staffView, setActive, setModal }) {
+function Dashboard({ leads, employees, staffView, setActive, setModal, userName }) {
   const calls = employees.reduce((total, employee) => total + employee.calls, 0)
   const interested = leads.filter(lead => lead.status === 'Interested').length
   const approved = leads.filter(lead => lead.status === 'Approved').length
@@ -74,7 +74,7 @@ function Dashboard({ leads, employees, staffView, setActive, setModal }) {
   const chartEmployees = employees.slice(0, 7)
   return (
     <>
-      <PageHead title={staffView ? 'Good morning, Priya!' : 'Dashboard'} subtitle={staffView ? "Here’s your activity for today" : "Here’s what’s happening with your loan business today."}
+      <PageHead title={staffView ? `Good morning, ${userName?.split(' ')[0] ?? 'there'}!` : 'Dashboard'} subtitle={staffView ? "Here’s your activity for today" : "Here’s what’s happening with your loan business today."}
         action={<>{!staffView && <button className="secondary" onClick={() => setModal('upload')}><Upload size={16}/> Bulk Upload</button>}<button className="primary" onClick={() => setModal('lead')}><Plus size={17}/> Add Lead</button></>}
       />
       <div className="stats-grid">
@@ -172,7 +172,7 @@ function EmployeesPage({ employees, onAdd }) {
         <section className="employee-card" key={e.id}>
           <div className="employee-top"><div className="avatar employee-avatar" style={{background:['#6c63ff','#20a47b','#ee9a43','#5c88c6'][e.id % 4]}}>{e.name.split(' ').map(part => part[0]).join('').slice(0,2)}</div><div><h3>{e.name}</h3><span>{e.status}</span></div><span className="employee-email">{e.email}</span></div>
           <div className="target-head"><span>Daily Call Target</span><strong>{e.calls} / {e.target}</strong></div>
-          <div className="progress"><i style={{width:`${e.calls/e.target*100}%`}}/></div>
+          <div className="progress"><i style={{width:`${e.target ? Math.min(e.calls / e.target * 100, 100) : 0}%`}}/></div>
           <div className="employee-stats"><div><strong>{e.assigned_leads}</strong><span>Assigned leads</span></div><div><strong>{Math.round(e.calls/e.target*100)}%</strong><span>Target</span></div><div><strong>{e.calls}</strong><span>Calls today</span></div></div>
         </section>
       ))}</div>
@@ -189,7 +189,7 @@ function FollowupsPage({ items, onCall }) {
   )
 }
 
-function DocumentsPage({ documents, leads, staffView, onUpload, onReview }) {
+function DocumentsPage({ documents, staffView, onUpload, onReview }) {
   return (
     <>
       <PageHead title="Document Verification" subtitle={`${documents.length} customer documents`} action={<button className="primary" onClick={onUpload}><Upload size={16}/> Upload Document</button>}/>
@@ -198,7 +198,7 @@ function DocumentsPage({ documents, leads, staffView, onUpload, onReview }) {
   )
 }
 
-function ApplicationsPage({ applications, leads, banks, onAdd, onStatusChange }) {
+function ApplicationsPage({ applications, onAdd, onStatusChange }) {
   return (
     <>
       <PageHead title="Loan Applications" subtitle={`${applications.length} applications tracked`} action={<button className="primary" onClick={onAdd}><Plus size={17}/> New Application</button>}/>
@@ -771,6 +771,7 @@ export default function App() {
   if (!loggedIn) return <Login onLogin={login} startupError={authError} />
 
   const staffView = role === 'Staff'
+  const selectedLead = leads.find(lead => lead.id === selectedLeadId)
 
   return (
     <div className={`app-shell ${mobileRoute ? 'mobile-route' : ''}`}>
@@ -802,7 +803,7 @@ export default function App() {
       <main>
         <header className="topbar">
           <button className="menu-btn" onClick={() => setSidebarOpen(true)}><Menu size={21}/></button>
-          <div className="global-search"><Search size={17}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search leads, customers, applications..."/><kbd>⌘ K</kbd></div>
+              <div className="global-search"><Search size={17}/><input aria-label="Search leads" value={search} onChange={e => setSearch(e.target.value)} onKeyDown={event => { if (event.key === 'Enter') setActive(staffView ? 'My Leads' : 'Leads') }} placeholder="Search leads..."/></div>
           <div className="top-actions">
             <button className="icon-btn notification"><Bell size={19}/><i /></button>
             <button className="profile-btn"><div className="avatar small">{currentUser?.name.split(' ').map(part => part[0]).join('').slice(0,2)}</div><span>{currentUser?.name.split(' ')[0]}<ChevronDown size={14}/></span></button>
@@ -812,7 +813,7 @@ export default function App() {
         <div className="content">
           {toast && <div className="toast"><CheckCircle2 size={17}/>{toast}</div>}
           {active === 'Dashboard' || active === 'My Dashboard' ? (
-            <Dashboard leads={leads} employees={employees} staffView={staffView} setActive={setActive} setModal={setModal} />
+            <Dashboard leads={leads} employees={employees} staffView={staffView} setActive={setActive} setModal={setModal} userName={currentUser?.name} />
           ) : active === 'Leads' || active === 'My Leads' ? (
             <LeadsPage leads={visibleLeads} setModal={setModal} staffView={staffView} statusFilter={statusFilter} setStatusFilter={setStatusFilter} loanFilter={loanFilter} setLoanFilter={setLoanFilter} onStatusChange={changeLeadStatus} onSchedule={leadId => { setSelectedLeadId(leadId); setModal('followup') }} onViewDetails={leadId => { setSelectedLeadId(leadId); setModal('details') }}/>
           ) : active === 'Employees' ? (
@@ -820,15 +821,15 @@ export default function App() {
           ) : active === 'Follow-ups' ? (
             <FollowupsPage items={followUps} onCall={logCall}/>
           ) : active === 'Documents' ? (
-            <DocumentsPage documents={documents} leads={leads} staffView={staffView} onUpload={() => setModal('document')} onReview={reviewDocument}/>
+            <DocumentsPage documents={documents} staffView={staffView} onUpload={() => setModal('document')} onReview={reviewDocument}/>
           ) : active === 'Applications' ? (
-            <ApplicationsPage applications={applications} leads={leads} banks={banks} onAdd={() => setModal('application')} onStatusChange={changeApplicationStatus}/>
+            <ApplicationsPage applications={applications} onAdd={() => setModal('application')} onStatusChange={changeApplicationStatus}/>
           ) : active === 'Banks & Schemes' ? (
             <BanksPage banks={banks} onAdd={() => setModal('bank')}/>
           ) : active === 'Reports' || active === 'Performance' ? (
             <ReportsPage leads={leads} employees={employees}/>
           ) : (
-            <Dashboard leads={leads} employees={employees} staffView={staffView} setActive={setActive} setModal={setModal} />
+            <Dashboard leads={leads} employees={employees} staffView={staffView} setActive={setActive} setModal={setModal} userName={currentUser?.name} />
           )}
         </div>
       </main>
@@ -846,11 +847,11 @@ export default function App() {
       {modal === 'assign' && <Modal title="Assign Unassigned Leads" onClose={() => setModal(null)}>
         <Assignment employees={employees} onCancel={() => setModal(null)} onSubmit={assignUnassignedLeads}/>
       </Modal>}
-      {modal === 'details' && selectedLeadId && <Modal title="Lead Details" onClose={() => { setModal(null); setSelectedLeadId(null) }}>
-        <LeadDetails lead={leads.find(lead => lead.id === selectedLeadId)}/>
+      {modal === 'details' && selectedLead && <Modal title="Lead Details" onClose={() => { setModal(null); setSelectedLeadId(null) }}>
+        <LeadDetails lead={selectedLead}/>
       </Modal>}
-      {modal === 'followup' && selectedLeadId && <Modal title="Schedule Follow-up" onClose={() => { setModal(null); setSelectedLeadId(null) }}>
-        <FollowUpForm lead={leads.find(lead => lead.id === selectedLeadId)} onCancel={() => { setModal(null); setSelectedLeadId(null) }} onSubmit={followUpAt => scheduleFollowUp(selectedLeadId, followUpAt)}/>
+      {modal === 'followup' && selectedLead && <Modal title="Schedule Follow-up" onClose={() => { setModal(null); setSelectedLeadId(null) }}>
+        <FollowUpForm lead={selectedLead} onCancel={() => { setModal(null); setSelectedLeadId(null) }} onSubmit={followUpAt => scheduleFollowUp(selectedLeadId, followUpAt)}/>
       </Modal>}
       {modal === 'employee' && <Modal title="Add Employee" onClose={() => setModal(null)}>
         <EmployeeForm onCancel={() => setModal(null)} onSubmit={createEmployee}/>
