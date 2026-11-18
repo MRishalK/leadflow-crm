@@ -367,7 +367,7 @@ async function handleApi(request, response, url) {
     if (!timingSafeEqual(expected, actual)) throw new HttpError(401, 'Email or password is incorrect.')
 
     const sessionId = randomBytes(32).toString('hex')
-    const user = { userId: record.id, email: record.email, role: record.role, employeeId: record.employee_id, name: record.employee_name ?? 'Amit Kumar' }
+    const user = { userId: record.id, email: record.email, role: record.role, employeeId: record.employee_id, name: record.employee_name ?? 'Admin' }
     sessions.set(sessionId, { ...user, expiresAt: Date.now() + sessionLifetime })
     const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
     return sendJson(response, 200, { user }, {
